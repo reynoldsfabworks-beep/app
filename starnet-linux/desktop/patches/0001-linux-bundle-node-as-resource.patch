@@ -1,0 +1,14 @@
+diff --git a/src-tauri/tauri.linux.conf.json b/src-tauri/tauri.linux.conf.json
+new file mode 100644
+index 00000000..eab73fc9
+--- /dev/null
++++ b/src-tauri/tauri.linux.conf.json
+@@ -0,0 +1,8 @@
++{
++  "bundle": {
++    "externalBin": [],
++    "resources": {
++      "binaries/node-x86_64-unknown-linux-gnu": "node"
++    }
++  }
++}

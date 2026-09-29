@@ -15,6 +15,9 @@ the station:
 
 The server only listens on `127.0.0.1` and is never exposed to your network.
 
+Want a native app window, tray icon and keychain integration instead? See **[desktop/](desktop/README.md)**
+for the Linux `.deb` / `.AppImage` build of the official desktop app (x86-64).
+
 | Distro family | Package manager | Tested |
 | --- | --- | --- |
 | Ubuntu / Debian / Mint / Pop!_OS, ChromeOS Linux | `apt` | Ubuntu 24.04 (system Node, private Node, GNOME Keyring) |
