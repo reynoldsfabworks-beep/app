@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=StarNet
+Comment=A living pixel-art station where real AI agents do real work
+Exec=@BIN@ open
+Icon=starnet
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=false
