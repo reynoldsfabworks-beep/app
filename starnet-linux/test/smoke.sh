@@ -18,7 +18,7 @@ cleanup() { starnet stop >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "── install ($TEST_HOME)"
-bash "$PKG_DIR/install.sh" "$@" || fail "install.sh exited non-zero"
+STARNET_NO_OPEN=1 bash "$PKG_DIR/install.sh" "$@" || fail "install.sh exited non-zero"
 
 echo "── files"
 for f in .local/bin/starnet .local/share/applications/starnet.desktop \

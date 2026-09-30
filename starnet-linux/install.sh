@@ -255,9 +255,14 @@ sed "s#@BIN@#$BIN_DIR/starnet#g" "$SCRIPT_DIR/starnet.desktop" > "$DATA_HOME/app
 command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA_HOME/applications" || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$DATA_HOME/icons/hicolor" 2>/dev/null || true
 
+# Make `starnet` work in new terminals. Debian/ChromeOS only add ~/.local/bin to PATH at login when it
+# already existed, so a fresh install would otherwise say "command not found".
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) warn "$BIN_DIR is not on your PATH yet — open a new terminal, or run: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+  *)
+    if ! grep -qs 'starnet-linux: ~/.local/bin' "$HOME/.bashrc"; then
+      printf '\n# starnet-linux: ~/.local/bin on PATH\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' >> "$HOME/.bashrc"
+    fi ;;
 esac
 
 if is_chromeos; then
@@ -272,8 +277,14 @@ cat <<EOF
   StarNet is installed.
 
   • Launch it from $WHERE, or run:  starnet open
+    (in this terminal window, use:  ~/.local/bin/starnet open)
   • $WINDOW
   • Keep agents working after you close the window:  starnet autostart on
   • Other commands:  starnet status | stop | restart | logs | update
 
 EOF
+
+# Start it and open the station right away, so there's nothing else to type.
+if [ "${STARNET_NO_OPEN:-0}" != 1 ]; then
+  "$BIN_DIR/starnet" open || warn "StarNet didn't start — run: ~/.local/bin/starnet logs"
+fi
