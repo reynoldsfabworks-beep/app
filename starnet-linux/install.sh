@@ -74,22 +74,22 @@ if [ "$SYSTEM_DEPS" = 1 ]; then
   case "$PM" in
     apt-get)
       $SUDO apt-get update -y
-      $SUDO apt-get install -y git curl ca-certificates tar build-essential python3 xdg-utils
+      $SUDO apt-get install -y git curl ca-certificates tar findutils build-essential python3 xdg-utils
       $SUDO apt-get install -y libsecret-tools || true ;;
     dnf)
-      $SUDO dnf install -y git curl ca-certificates tar gzip gcc-c++ make python3 xdg-utils
+      $SUDO dnf install -y git curl ca-certificates tar gzip findutils gcc-c++ make python3 xdg-utils
       $SUDO dnf install -y libsecret || true ;;
     pacman)
-      $SUDO pacman -Sy --needed --noconfirm git curl ca-certificates tar gzip base-devel python xdg-utils
+      $SUDO pacman -Sy --needed --noconfirm git curl ca-certificates tar gzip findutils base-devel python xdg-utils
       $SUDO pacman -S --needed --noconfirm libsecret || true ;;
     zypper)
-      $SUDO zypper --non-interactive install git curl ca-certificates tar gzip gcc-c++ make python3 xdg-utils
+      $SUDO zypper --non-interactive install git curl ca-certificates tar gzip findutils gcc-c++ make python3 xdg-utils
       $SUDO zypper --non-interactive install libsecret-tools || true ;;
     *)
       warn "Unknown package manager — install git, curl, tar, a C++ compiler, make and python3 yourself." ;;
   esac
 fi
-for tool in curl tar; do command -v "$tool" >/dev/null || die "$tool is required"; done
+for tool in curl tar find; do command -v "$tool" >/dev/null || die "$tool is required"; done
 [ -n "${STARNET_SRC_DIR:-}" ] || command -v git >/dev/null || die "git is required"
 
 # ── 2. Node.js ──────────────────────────────────────────────────────────────────
