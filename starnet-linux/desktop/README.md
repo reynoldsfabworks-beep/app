@@ -23,8 +23,10 @@ Each contains:
 - `SHA256SUMS.txt`
 
 Both are about 450–500 MB, because they bundle Node.js and the local voice/embedding models.
-Upstream's build scripts only had an x86-64 Linux target. Patch `0003` adds ARM64, and the ARM64
-build runs on GitHub's ARM runner.
+Upstream's build scripts only had an x86-64 Linux target. Patch `0003` adds ARM64, which builds on
+GitHub's ARM runner (`StarNet_<version>_arm64.deb` and `StarNet_<version>_aarch64.AppImage`). The
+ARM64 build passes the same Rust tests and packages Node.js at `/usr/lib/StarNet/node`, but it has
+not yet been launched on real ARM hardware.
 
 ## What was needed to make it work
 
