@@ -1,0 +1,112 @@
+# Builds the StarNet desktop app (Tauri) for Linux as .deb and .AppImage.
+#
+# Upstream StarNet (androoAGI/starnet) ships Windows/macOS only; its own desktop-build workflow has
+# an unpublished Linux leg. This runs that same recipe against a pinned StarNet commit, applies any
+# Linux fixes kept in starnet-linux/desktop/patches/, and uploads the installers as a run artifact.
+#
+# Run it from the Actions tab ("Run workflow"), optionally with another StarNet ref.
+name: starnet-linux-desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      starnet_ref:
+        description: "StarNet branch, tag or commit to build (default: the pinned commit)"
+        required: false
+        default: ""
+  push:
+    branches: [claude/starnet-repo-wb360s]
+    paths:
+      - ".github/workflows/starnet-linux-desktop.yml"
+      - "starnet-linux/desktop/**"
+
+env:
+  # Keep in step with PINNED_REF in starnet-linux/install.sh.
+  STARNET_PINNED_REF: fbddbf992f8e7082196f07c3024781fcf1c276fc
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04's older glibc keeps the AppImage/.deb runnable on more distros than a 24.04 build would.
+          - { target: linux-x64,   runner: ubuntu-22.04 }
+          - { target: linux-arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pkg
+
+      - name: Check out StarNet
+        uses: actions/checkout@v4
+        with:
+          repository: androoAGI/starnet
+          ref: ${{ inputs.starnet_ref || env.STARNET_PINNED_REF }}
+          path: starnet
+
+      - name: Apply Linux patches
+        working-directory: starnet
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for p in ../pkg/starnet-linux/desktop/patches/*.patch; do
+            echo "applying $(basename "$p")"
+            git apply --verbose "$p"
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Linux build dependencies (WebKitGTK, Tauri toolchain, D-Bus for the keyring)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: starnet/src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install StarNet dependencies
+        working-directory: starnet
+        run: npm ci --no-audit --no-fund
+
+      - name: Stage bundled Node runtime, voice deps and frontend
+        working-directory: starnet
+        run: |
+          node scripts/prepare-node.mjs ${{ matrix.target }}
+          node scripts/stage-voice-deps.mjs --target ${{ matrix.target }}
+          node scripts/stage-frontend-dist.mjs
+
+      - name: Rust unit tests (including the Linux orphan-sidecar reap proof)
+        working-directory: starnet/src-tauri
+        run: |
+          cargo test --bin skynet-desktop
+          cargo test --bin skynet-desktop linux_reap -- --ignored
+
+      - name: Build .deb and .AppImage
+        working-directory: starnet
+        run: >
+          npm run tauri -- build --verbose --bundles deb,appimage
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p out
+          find starnet/src-tauri/target/release/bundle \( -name '*.deb' -o -name '*.AppImage' \) -exec cp {} out/ \;
+          (cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starnet-${{ matrix.target }}
+          if-no-files-found: error
+          path: out/*
