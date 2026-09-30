@@ -18,12 +18,14 @@ The server only listens on `127.0.0.1` and is never exposed to your network.
 Want a native app window, tray icon and keychain integration instead? See **[desktop/](desktop/README.md)**
 for the Linux `.deb` / `.AppImage` build of the official desktop app (x86-64).
 
-| Distro family | Package manager | Tested |
+| Distro family | Package manager | Tested (full install → run → uninstall) |
 | --- | --- | --- |
-| Ubuntu / Debian / Mint / Pop!_OS, ChromeOS Linux | `apt` | Ubuntu 24.04 (system Node, private Node, GNOME Keyring) |
-| Arch / Manjaro / EndeavourOS | `pacman` | Arch (container, clean system with no Node or compiler); the `pacman` step itself not yet |
-| Fedora / RHEL / Rocky / Alma | `dnf` | not yet |
-| openSUSE | `zypper` | not yet |
+| Ubuntu / Debian / Mint / Pop!_OS, ChromeOS Linux | `apt` | Ubuntu 24.04 (with and without GNOME Keyring), Debian 12 (private Node download) |
+| Fedora / RHEL / Rocky / Alma | `dnf` | Fedora 41 |
+| Arch / Manjaro / EndeavourOS | `pacman` | Arch Linux |
+| openSUSE | `zypper` | openSUSE Tumbleweed |
+
+The `starnet-linux-installer` GitHub Actions workflow reruns these tests on every change to this folder.
 
 Any other distro works if you install git, curl, a C++ toolchain and Node.js 20+ yourself, then run
 with `--no-system-deps`. x86-64 and ARM64 are both supported.

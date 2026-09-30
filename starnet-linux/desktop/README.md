@@ -26,7 +26,7 @@ They are **x86-64 only**. Upstream's build scripts don't have an ARM64 Linux tar
 ## What was needed to make it work
 
 Upstream already had an unpublished Linux leg in its desktop-build workflow. Built as-is, the app
-compiles, installs and runs. One packaging bug needed fixing, and it's kept in `patches/`:
+compiles, installs and runs. Two Linux problems needed fixing, and the fixes are kept in `patches/`:
 
 - **`0001-linux-bundle-node-as-resource.patch`:** Tauri installs "external binaries" next to the
   app executable. On Linux that meant the bundled Node.js landed at **`/usr/bin/node`**. The `.deb`
@@ -34,6 +34,12 @@ compiles, installs and runs. One packaging bug needed fixing, and it's kept in `
   patch adds `src-tauri/tauri.linux.conf.json`, a Linux-only config that Tauri merges
   automatically. It ships Node.js as an app resource at `/usr/lib/StarNet/node` instead. The app
   already looks there first, so no Rust changes are needed.
+- **`0002-linux-reap-orphan-sidecars.patch`:** if the app is killed or crashes, its sidecar keeps
+  running. On the next launch the Windows and macOS builds stop that orphan first, because two
+  sidecars on one workspace invalidate each other's OAuth sign-in tokens. On Linux that step was a
+  stub that did nothing. The patch implements it the same way macOS does. It stops only processes
+  whose executable (`/proc/<pid>/exe`) is exactly the bundled Node.js, gracefully first and then
+  forcibly. It also adds a Linux test that plants an orphan next to an unrelated Node process.
 
 ## Verified
 
@@ -43,6 +49,10 @@ D-Bus session and GNOME Keyring:
 - **The `.deb`:** installs alongside an existing `/usr/bin/node` and leaves it untouched. It opens
   the StarNet window and tray icon, and runs its sidecar from `/usr/lib/StarNet/node`.
 - **The AppImage:** opens the window and runs its sidecar from its own bundled Node.js.
+- **Crash recovery:** after a hard kill (`SIGKILL`) of the app, its sidecar was left running. On
+  relaunch the app stopped that orphan and started a fresh one. A Node.js process running from
+  another path was left alone.
+- **Rust tests:** all 69 existing tests pass, plus the new Linux cleanup test.
 
 ## Known gaps
 
@@ -50,7 +60,4 @@ D-Bus session and GNOME Keyring:
   from Actions instead.
 - **Package naming comes from upstream:** the Debian package is `star-net` and the executable is
   `/usr/bin/skynet-desktop`. To uninstall: `sudo apt remove star-net`.
-- **No orphaned-sidecar cleanup:** if the app crashes, a leftover sidecar isn't cleaned up on the
-  next launch. Upstream only implements that cleanup on Windows and macOS. Check with
-  `pgrep -af /usr/lib/StarNet/node`.
 - Like the official apps, it needs a desktop keyring (GNOME Keyring, KWallet) for stored secrets.

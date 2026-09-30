@@ -79,6 +79,12 @@ jobs:
           node scripts/stage-voice-deps.mjs --target linux-x64
           node scripts/stage-frontend-dist.mjs
 
+      - name: Rust unit tests (including the Linux orphan-sidecar reap proof)
+        working-directory: starnet/src-tauri
+        run: |
+          cargo test --bin skynet-desktop
+          cargo test --bin skynet-desktop linux_reap -- --ignored
+
       - name: Build .deb and .AppImage
         working-directory: starnet
         run: >

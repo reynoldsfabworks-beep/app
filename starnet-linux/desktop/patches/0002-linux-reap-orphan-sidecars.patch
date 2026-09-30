@@ -1,0 +1,146 @@
+diff --git a/src-tauri/src/main.rs b/src-tauri/src/main.rs
+index 0abd2bc8..450366dd 100644
+--- a/src-tauri/src/main.rs
++++ b/src-tauri/src/main.rs
+@@ -1855,14 +1855,89 @@ fn reap_orphan_sidecars(node: &Path, startup_log: &Option<PathBuf>) -> usize {
+     reaped
+ }
+ 
++/// The executable image of `pid`, as the kernel reports it through /proc. None when the process
++/// is gone, is a zombie, or belongs to another user (the link is unreadable) — never a guess.
++#[cfg(all(not(windows), not(target_os = "macos")))]
++fn linux_process_image_path(pid: i32) -> Option<PathBuf> {
++    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
++}
++
++/// Linux backstop for a desktop process that exits without running its managed-state Drop hook.
++/// Enumerate /proc, authorize termination only when /proc/<pid>/exe is the exact bundled Node
++/// image path, ask it to shut down gracefully, then force only that same verified image if needed.
++/// A system `node` (or any other install) never matches, so unrelated Node programs are untouched.
+ #[cfg(all(not(windows), not(target_os = "macos")))]
+ fn reap_orphan_sidecars(node: &Path, startup_log: &Option<PathBuf>) -> usize {
+-    let _ = node;
++    unsafe extern "C" {
++        fn kill(pid: i32, signal: i32) -> i32;
++    }
++
++    if !is_reapable_node_path(node) {
++        log_startup(
++            startup_log,
++            format!(
++                "sidecar-reap: skipped — node path {:?} is not an absolute bundled runtime (dev PATH fallback)",
++                node
++            ),
++        );
++        return 0;
++    }
++    // /proc/<pid>/exe is fully resolved; compare against the resolved bundled path too.
++    let node = std::fs::canonicalize(node).unwrap_or_else(|_| node.to_path_buf());
++    let is_ours = |pid: i32| linux_process_image_path(pid).is_some_and(|path| same_path(&path, &node));
++
++    let pids: Vec<i32> = match std::fs::read_dir("/proc") {
++        Ok(entries) => entries
++            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<i32>().ok())
++            .collect(),
++        Err(_) => {
++            log_startup(
++                startup_log,
++                "sidecar-reap: /proc enumeration failed — skipped",
++            );
++            return 0;
++        }
++    };
++
++    let mut reaped = 0usize;
++    for pid in pids {
++        if pid <= 0 || pid == std::process::id() as i32 || !is_ours(pid) {
++            continue;
++        }
++
++        const SIGTERM: i32 = 15;
++        const SIGKILL: i32 = 9;
++        let _ = unsafe { kill(pid, SIGTERM) };
++        let deadline = Instant::now() + Duration::from_secs(4);
++        while Instant::now() < deadline {
++            if !is_ours(pid) {
++                break;
++            }
++            std::thread::sleep(Duration::from_millis(50));
++        }
++        if is_ours(pid) {
++            let _ = unsafe { kill(pid, SIGKILL) };
++            std::thread::sleep(Duration::from_millis(50));
++        }
++        if !is_ours(pid) {
++            reaped += 1;
++            log_startup(
++                startup_log,
++                format!(
++                    "sidecar-reap: terminated orphan sidecar pid={pid} ({})",
++                    node.display()
++                ),
++            );
++        }
++    }
+     log_startup(
+         startup_log,
+-        "sidecar-reap: this platform has no exact-image reaper wired",
++        format!(
++            "sidecar-reap: done — {reaped} orphan sidecar(s) reaped for {}",
++            node.display()
++        ),
+     );
+-    0
++    reaped
+ }
+ 
+ /// The sidecar accepts both the canonical STARNET_* names and legacy SKYNET_* aliases. Replace both
+@@ -5037,6 +5112,48 @@ mod sidecar_reap_tests {
+         let _ = std::fs::remove_dir_all(&dir);
+     }
+ 
++    /// Linux twin of the Windows proof above (also `--ignored`): copies the `node` on PATH to a
++    /// unique temp "bundled" path, starts an orphan from it and a bystander from the original,
++    /// and asserts the reap terminates exactly the former.
++    #[cfg(target_os = "linux")]
++    #[test]
++    #[ignore]
++    fn linux_reap_terminates_only_processes_from_the_exact_path() {
++        let node_on_path = std::env::var_os("PATH").and_then(|paths| {
++            std::env::split_paths(&paths)
++                .map(|d| d.join("node"))
++                .find(|p| p.exists())
++        });
++        let Some(src) = node_on_path else {
++            eprintln!("node not on PATH — nothing to prove here, skipping");
++            return;
++        };
++        let dir = std::env::temp_dir().join(format!("starnet-reap-test-{}", std::process::id()));
++        std::fs::create_dir_all(&dir).unwrap();
++        let bundled = dir.join("node");
++        std::fs::copy(&src, &bundled).unwrap();
++
++        let idle = ["-e", "setInterval(function(){}, 1000)"];
++        let mut orphan = Command::new(&bundled).args(idle).spawn().unwrap();
++        let mut bystander = Command::new(&src).args(idle).spawn().unwrap();
++        std::thread::sleep(Duration::from_millis(400));
++
++        let reaped = reap_orphan_sidecars(&bundled, &None);
++        assert_eq!(reaped, 1, "exactly the planted orphan must be reaped");
++        assert!(
++            matches!(orphan.try_wait(), Ok(Some(_))),
++            "process running from the bundled path must be terminated"
++        );
++        assert!(
++            matches!(bystander.try_wait(), Ok(None)),
++            "node from a DIFFERENT path must never be touched"
++        );
++
++        let _ = bystander.kill();
++        let _ = bystander.wait();
++        let _ = std::fs::remove_dir_all(&dir);
++    }
++
+     #[cfg(windows)]
+     #[test]
+     fn image_path_match_is_case_insensitive_but_exact() {
