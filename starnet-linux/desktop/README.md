@@ -11,35 +11,44 @@ GitHub Actions builds them with
 [`.github/workflows/starnet-linux-desktop.yml`](../../.github/workflows/starnet-linux-desktop.yml).
 It runs on every push that touches this folder or the workflow, or on demand from **Actions →
 starnet-linux-desktop → Run workflow**, where you can optionally pick another StarNet ref. Download
-the `starnet-linux-x64` artifact from the finished run. It contains:
+the artifact for your CPU from the finished run: `starnet-linux-x64` for Intel/AMD PCs, or
+`starnet-linux-arm64` for ARM64 machines (many Chromebooks, Snapdragon laptops, Raspberry Pi 5).
+Each contains:
 
-- `StarNet_<version>_amd64.deb`: for Ubuntu/Debian/Mint/Pop!_OS. Install with
-  `sudo apt install ./StarNet_<version>_amd64.deb`, then launch **StarNet** from your app menu.
-- `StarNet_<version>_amd64.AppImage`: for any distro. Run `chmod +x StarNet_*.AppImage` and
+- `StarNet_<version>_<arch>.deb`: for Ubuntu/Debian/Mint/Pop!_OS. Install with
+  `sudo apt install ./StarNet_<version>_<arch>.deb`, then launch **StarNet** from your app menu.
+- `StarNet_<version>_<arch>.AppImage`: for any distro. Run `chmod +x StarNet_*.AppImage` and
   then `./StarNet_*.AppImage`. It needs FUSE 2 (`libfuse2`); without it, set
   `APPIMAGE_EXTRACT_AND_RUN=1`.
 - `SHA256SUMS.txt`
 
 Both are about 450–500 MB, because they bundle Node.js and the local voice/embedding models.
-They are **x86-64 only**. Upstream's build scripts don't have an ARM64 Linux target yet.
+Upstream's build scripts only had an x86-64 Linux target. Patch `0003` adds ARM64, and the ARM64
+build runs on GitHub's ARM runner.
 
 ## What was needed to make it work
 
 Upstream already had an unpublished Linux leg in its desktop-build workflow. Built as-is, the app
-compiles, installs and runs. Two Linux problems needed fixing, and the fixes are kept in `patches/`:
+compiles, installs and runs. Three Linux problems needed fixing, and the fixes are kept in `patches/`:
 
 - **`0001-linux-bundle-node-as-resource.patch`:** Tauri installs "external binaries" next to the
   app executable. On Linux that meant the bundled Node.js landed at **`/usr/bin/node`**. The `.deb`
   would then conflict with the distro's `nodejs` package, or silently replace the user's Node. The
   patch adds `src-tauri/tauri.linux.conf.json`, a Linux-only config that Tauri merges
   automatically. It ships Node.js as an app resource at `/usr/lib/StarNet/node` instead. The app
-  already looks there first, so no Rust changes are needed.
+  already looks there first, so no Rust changes are needed. The resource comes from
+  `binaries/node-linux`, an architecture-neutral copy that patch `0003` makes.
 - **`0002-linux-reap-orphan-sidecars.patch`:** if the app is killed or crashes, its sidecar keeps
   running. On the next launch the Windows and macOS builds stop that orphan first, because two
   sidecars on one workspace invalidate each other's OAuth sign-in tokens. On Linux that step was a
   stub that did nothing. The patch implements it the same way macOS does. It stops only processes
   whose executable (`/proc/<pid>/exe`) is exactly the bundled Node.js, gracefully first and then
   forcibly. It also adds a Linux test that plants an orphan next to an unrelated Node process.
+- **`0003-linux-arm64-node-target.patch`:** `scripts/prepare-node.mjs` only knew `linux-x64`.
+  The patch adds `linux-arm64`, the official Node.js ARM64 build, checksum-verified the same way.
+  It also picks the right target automatically on an ARM machine. For every Linux target it
+  writes the architecture-neutral `binaries/node-linux` that patch `0001` bundles. Upstream's
+  `test/prepare-node.test.js` gets the matching ARM64 cases.
 
 ## Verified
 

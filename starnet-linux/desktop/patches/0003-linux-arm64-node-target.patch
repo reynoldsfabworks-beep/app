@@ -1,0 +1,82 @@
+diff --git a/scripts/prepare-node.mjs b/scripts/prepare-node.mjs
+index c1dcce89..28e0437d 100644
+--- a/scripts/prepare-node.mjs
++++ b/scripts/prepare-node.mjs
+@@ -10,7 +10,7 @@
+ // Override version:    SKYNET_BUNDLE_NODE=v22.23.2
+ //
+ // Windows ships Node as a bare node.exe; macOS/Linux ship a .tar.gz whose bin/node we extract via `tar`.
+-import { createWriteStream, mkdirSync, existsSync, rmSync, renameSync, readFileSync, writeFileSync, chmodSync, readdirSync } from 'node:fs';
++import { createWriteStream, mkdirSync, existsSync, rmSync, renameSync, readFileSync, writeFileSync, chmodSync, readdirSync, copyFileSync } from 'node:fs';
+ import { createHash } from 'node:crypto';
+ import { get } from 'node:https';
+ import { join, dirname } from 'node:path';
+@@ -27,6 +27,7 @@ const TARGETS = {
+   'darwin-arm64': { triple: 'aarch64-apple-darwin',     dist: 'node-${V}-darwin-arm64.tar.gz', sha: 'node-${V}-darwin-arm64.tar.gz', ext: '',     member: 'node-${V}-darwin-arm64/bin/node' },
+   'darwin-x64':   { triple: 'x86_64-apple-darwin',      dist: 'node-${V}-darwin-x64.tar.gz',   sha: 'node-${V}-darwin-x64.tar.gz',   ext: '',     member: 'node-${V}-darwin-x64/bin/node' },
+   'linux-x64':    { triple: 'x86_64-unknown-linux-gnu', dist: 'node-${V}-linux-x64.tar.gz',    sha: 'node-${V}-linux-x64.tar.gz',    ext: '',     member: 'node-${V}-linux-x64/bin/node' },
++  'linux-arm64':  { triple: 'aarch64-unknown-linux-gnu', dist: 'node-${V}-linux-arm64.tar.gz', sha: 'node-${V}-linux-arm64.tar.gz', ext: '',     member: 'node-${V}-linux-arm64/bin/node' },
+ };
+ 
+ // host OS/arch -> a TARGETS key. Keeps the default (no-arg) behavior = "bundle for THIS machine", so a
+@@ -34,7 +35,7 @@ const TARGETS = {
+ export function defaultTarget(platform = process.platform, arch = process.arch) {
+   if (platform === 'win32') return 'win-x64';
+   if (platform === 'darwin') return arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+-  if (platform === 'linux') return 'linux-x64';
++  if (platform === 'linux') return arch === 'arm64' ? 'linux-arm64' : 'linux-x64';
+   throw new Error(`unsupported host platform ${platform}/${arch}; pass an explicit target (${Object.keys(TARGETS).join(', ')})`);
+ }
+ 
+@@ -125,6 +126,17 @@ export function assertNoBundledRuntimeState(rootDir = join(dirname(fileURLToPath
+   }
+ }
+ 
++// Linux ships Node as an app resource (src-tauri/tauri.linux.conf.json), not an externalBin, so the
++// packaged binary never lands in /usr/bin. Tauri resources have no per-target naming, so every Linux
++// target also publishes an arch-neutral copy that the Linux config maps to <resources>/node.
++function publishLinuxAlias(r, out, outDir) {
++  if (!r.target.startsWith('linux-')) return;
++  const alias = join(outDir, 'node-linux');
++  copyFileSync(out, alias);
++  try { chmodSync(alias, 0o755); } catch {}
++  console.log(`[prepare-node] linux resource alias -> ${alias}`);
++}
++
+ async function main(target) {
+   assertNoBundledRuntimeState();
+   const r = resolveTarget(target);
+@@ -141,6 +153,7 @@ async function main(target) {
+   }
+   if (cachedRuntimeMatches(out, r.version, expected) && !process.env.SKYNET_BUNDLE_FORCE) {
+     console.log(`[prepare-node] ${out} already present; skipping (set SKYNET_BUNDLE_FORCE=1 to re-fetch)`);
++    publishLinuxAlias(r, out, outDir);
+     return;
+   }
+   if (existsSync(out) && !process.env.SKYNET_BUNDLE_FORCE) {
+@@ -169,6 +182,7 @@ async function main(target) {
+       rmSync(dl, { force: true });
+     }
+     writeFileSync(out + '.version', r.version + '\n', 'utf8');
++    publishLinuxAlias(r, out, outDir);
+     console.log('[prepare-node] done (checksum verified; gitignored build input)');
+   } catch (e) {
+     try { rmSync(dl, { force: true }); } catch {}
+diff --git a/test/prepare-node.test.js b/test/prepare-node.test.js
+index bccc42a9..50ba47cc 100644
+--- a/test/prepare-node.test.js
++++ b/test/prepare-node.test.js
+@@ -48,6 +48,13 @@ const { createHash } = require('node:crypto');
+   A.eq(m.defaultTarget('darwin', 'arm64'), 'darwin-arm64', 'darwin/arm64 -> darwin-arm64');
+   A.eq(m.defaultTarget('darwin', 'x64'), 'darwin-x64', 'darwin/x64 -> darwin-x64');
+   A.eq(m.defaultTarget('linux', 'x64'), 'linux-x64', 'linux -> linux-x64');
++  A.eq(m.defaultTarget('linux', 'arm64'), 'linux-arm64', 'linux arm64 -> linux-arm64');
++  // ---- linux-arm64: tarball + bin/node extraction ----
++  const la = m.resolveTarget('linux-arm64', 'v22.12.0');
++  A.eq(la.triple, 'aarch64-unknown-linux-gnu', 'linux arm64 triple');
++  A.eq(la.distUrl, 'https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-arm64.tar.gz', 'linux arm64 tarball url');
++  A.eq(la.member, 'node-v22.12.0-linux-arm64/bin/node', 'linux arm64 extracts bin/node from the tarball');
++  A.eq(la.outName, 'node-aarch64-unknown-linux-gnu', 'linux arm64 output filename');
+   A.throws(() => m.defaultTarget('aix', 'ppc'), 'an unsupported host platform throws');
+ 
+   // ---- unknown target is a clear error, not a silent wrong download ----

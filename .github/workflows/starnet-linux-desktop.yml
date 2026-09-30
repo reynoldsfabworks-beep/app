@@ -26,8 +26,15 @@ env:
 
 jobs:
   build:
-    # 22.04's older glibc keeps the AppImage/.deb runnable on more distros than a 24.04 build would.
-    runs-on: ubuntu-22.04
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04's older glibc keeps the AppImage/.deb runnable on more distros than a 24.04 build would.
+          - { target: linux-x64,   runner: ubuntu-22.04 }
+          - { target: linux-arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +73,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: starnet/src-tauri
-          key: linux-x64
+          key: ${{ matrix.target }}
 
       - name: Install StarNet dependencies
         working-directory: starnet
@@ -75,8 +82,8 @@ jobs:
       - name: Stage bundled Node runtime, voice deps and frontend
         working-directory: starnet
         run: |
-          node scripts/prepare-node.mjs linux-x64
-          node scripts/stage-voice-deps.mjs --target linux-x64
+          node scripts/prepare-node.mjs ${{ matrix.target }}
+          node scripts/stage-voice-deps.mjs --target ${{ matrix.target }}
           node scripts/stage-frontend-dist.mjs
 
       - name: Rust unit tests (including the Linux orphan-sidecar reap proof)
@@ -100,6 +107,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: starnet-linux-x64
+          name: starnet-${{ matrix.target }}
           if-no-files-found: error
           path: out/*
