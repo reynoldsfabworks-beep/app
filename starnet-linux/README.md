@@ -40,9 +40,20 @@ with `--no-system-deps`. x86-64 and ARM64 are both supported.
 
 ## Install
 
+Paste this into a terminal. On a Chromebook, use the **Terminal** app's Linux ("penguin") window:
+
 ```bash
-git clone -b claude/starnet-repo-wb360s https://github.com/reynoldsfabworks-beep/app.git starnet-linux-src
-bash starnet-linux-src/starnet-linux/install.sh
+curl -fsSL https://raw.githubusercontent.com/reynoldsfabworks-beep/app/claude/starnet-repo-wb360s/starnet-linux/get.sh | bash
+```
+
+It installs `git` if it's missing (a new ChromeOS Linux environment doesn't have it), downloads this
+package to `~/starnet-linux-src`, and runs the installer. Run it again later to update.
+
+If you'd rather do it by hand:
+
+```bash
+git clone -b claude/starnet-repo-wb360s https://github.com/reynoldsfabworks-beep/app.git ~/starnet-linux-src
+bash ~/starnet-linux-src/starnet-linux/install.sh
 ```
 
 The installer:
@@ -112,8 +123,8 @@ your settings, key and logs from the old `starnet-chromeos` folders automaticall
 ## Uninstall
 
 ```bash
-bash starnet-linux-src/starnet-linux/uninstall.sh           # keeps your station data and key
-bash starnet-linux-src/starnet-linux/uninstall.sh --purge   # also deletes data and the key
+bash ~/starnet-linux-src/starnet-linux/uninstall.sh           # keeps your station data and key
+bash ~/starnet-linux-src/starnet-linux/uninstall.sh --purge   # also deletes data and the key
 ```
 
 ## Testing
