@@ -172,14 +172,14 @@ else
   fi
   printf '%s\n' "$SPARSE_PATTERNS" > "$SRC/.git/info/sparse-checkout"
   git -C "$SRC" remote set-url origin "$STARNET_REPO"
-  git -C "$SRC" fetch -q --depth 1 --filter=blob:none origin "$STARNET_REF"
-  git -C "$SRC" checkout -q --force FETCH_HEAD
+  git -C "$SRC" fetch --progress --depth 1 --filter=blob:none origin "$STARNET_REF"
+  git -C "$SRC" checkout --progress --force FETCH_HEAD
 fi
 [ -f "$SRC/sidecar/index.js" ] || die "$SRC does not look like a StarNet checkout"
 printf '%s\n' "$SRC" > "$CONF_DIR/src-dir"
 printf '%s\n' "$SCRIPT_DIR" > "$CONF_DIR/pkg-dir"
 
-say "Installing StarNet runtime dependencies (npm ci --omit=dev)…"
+say "Installing StarNet runtime dependencies (npm ci --omit=dev) — a few quiet minutes are normal…"
 if ! (cd "$SRC" && npm ci --omit=dev --no-audit --no-fund); then
   warn "Full dependency install failed (usually a native module build). Retrying without install scripts;"
   warn "StarNet will run, but features needing native modules (e.g. the in-app terminal) may be unavailable."
