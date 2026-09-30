@@ -129,24 +129,55 @@ else
 fi
 
 # ── 3. StarNet source + dependencies ────────────────────────────────────────────
+# StarNet's repository is ~6 GB checked out (website, docs, art-review sources, history), which does
+# not fit a default ChromeOS Linux disk. The sidecar only needs sidecar/, shared/ and the runtime part
+# of frontend/ — the same set the official desktop app ships — so fetch just that: a shallow,
+# blob-less clone with a sparse checkout. The frontend exclusions mirror upstream's
+# scripts/stage-frontend-dist.mjs (art review/calibration sources no runtime code requests).
+SPARSE_PATTERNS='/*
+!/*/
+/sidecar/
+/shared/
+/frontend/
+!/frontend/assets/industrial/*/
+/frontend/assets/industrial/remaster/
+/frontend/assets/industrial/projection-correction/
+/frontend/assets/industrial/complete-sheet/
+/frontend/assets/industrial/approved-sheet/
+/frontend/assets/industrial/calibration/
+/src-tauri/tauri.conf.json
+/src-tauri/icons/'
+
 if [ -n "${STARNET_SRC_DIR:-}" ]; then
   SRC="$(cd "$STARNET_SRC_DIR" && pwd)"
   say "Using existing StarNet checkout: $SRC"
 else
   SRC="$APP_DIR/starnet"
+  # A checkout from an earlier version of this installer is a full clone (and may be half-written
+  # after running out of space). It holds no user data — that lives in ~/.local/share/StarNet — so
+  # replace it with the slim layout.
+  if [ -d "$SRC/.git" ] && [ "$(git -C "$SRC" config --get core.sparseCheckout || true)" != true ]; then
+    say "Replacing the old full StarNet download with a slim one…"
+    rm -rf "$SRC"
+  fi
   if [ -d "$SRC/.git" ]; then
-    say "Updating StarNet checkout to $STARNET_REF…"
+    say "Updating StarNet to $STARNET_REF…"
   else
-    say "Downloading StarNet (a large repository — this can take a few minutes)…"
+    say "Downloading StarNet (only the parts the app runs — a few hundred MB)…"
     git init -q "$SRC"
     git -C "$SRC" remote add origin "$STARNET_REPO"
+    git -C "$SRC" config remote.origin.promisor true
+    git -C "$SRC" config remote.origin.partialclonefilter blob:none
+    git -C "$SRC" sparse-checkout init --no-cone
   fi
+  printf '%s\n' "$SPARSE_PATTERNS" > "$SRC/.git/info/sparse-checkout"
   git -C "$SRC" remote set-url origin "$STARNET_REPO"
-  git -C "$SRC" fetch -q --depth 1 origin "$STARNET_REF"
+  git -C "$SRC" fetch -q --depth 1 --filter=blob:none origin "$STARNET_REF"
   git -C "$SRC" checkout -q --force FETCH_HEAD
 fi
 [ -f "$SRC/sidecar/index.js" ] || die "$SRC does not look like a StarNet checkout"
 printf '%s\n' "$SRC" > "$CONF_DIR/src-dir"
+printf '%s\n' "$SCRIPT_DIR" > "$CONF_DIR/pkg-dir"
 
 say "Installing StarNet runtime dependencies (npm ci --omit=dev)…"
 if ! (cd "$SRC" && npm ci --omit=dev --no-audit --no-fund); then
@@ -154,6 +185,26 @@ if ! (cd "$SRC" && npm ci --omit=dev --no-audit --no-fund); then
   warn "StarNet will run, but features needing native modules (e.g. the in-app terminal) may be unavailable."
   (cd "$SRC" && npm ci --omit=dev --no-audit --no-fund --ignore-scripts)
 fi
+
+# Drop what the official desktop build also drops (scripts/stage-voice-deps.mjs): onnxruntime-web is the
+# browser backend the sidecar never loads (~220 MB), and onnxruntime-node ships native binaries for
+# every OS/CPU when only this machine's is ever used. Verified: both onnxruntime-node copies still run
+# CPU inference after this pruning.
+case "$(uname -m)" in aarch64|arm64) ORT_ARCH=arm64 ;; *) ORT_ARCH=x64 ;; esac
+find "$SRC/node_modules" -type d -name onnxruntime-web -prune -exec rm -rf {} +
+for napi in "$SRC"/node_modules/onnxruntime-node/bin/napi-v* "$SRC"/node_modules/*/node_modules/onnxruntime-node/bin/napi-v*; do
+  [ -d "$napi" ] || continue
+  for plat in "$napi"/*/; do
+    case "$(basename "$plat")" in
+      linux) for arch in "$plat"*/; do [ "$(basename "$arch")" = "$ORT_ARCH" ] || rm -rf "$arch"; done ;;
+      *) rm -rf "$plat" ;;
+    esac
+  done
+done
+# NVIDIA CUDA/TensorRT execution providers (~660 MB across both copies) are loaded only when a session
+# asks for them; StarNet's local voice always runs with device 'cpu'.
+find "$SRC/node_modules" -path '*onnxruntime-node/bin/*' \( -name 'libonnxruntime_providers_cuda.so' -o -name 'libonnxruntime_providers_tensorrt.so' \) -delete
+say "StarNet uses $(du -sh "$SRC" 2>/dev/null | cut -f1) on disk."
 
 # ── 4. connector-vault key ──────────────────────────────────────────────────────
 # The Windows/macOS app keeps a 256-bit key in the OS keychain and passes it to the sidecar as

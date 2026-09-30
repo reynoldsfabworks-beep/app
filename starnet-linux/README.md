@@ -32,12 +32,14 @@ with `--no-system-deps`. x86-64 and ARM64 are both supported.
 
 ## Requirements
 
-- About 4 GB of free disk space. StarNet's repository is large, and its local voice/embedding
-  models add more.
+- About 1.5 GB of free disk space. StarNet itself takes about 1 GB, and Node.js takes about
+  200 MB if the installer has to download it. The installer only downloads the parts of StarNet the
+  app runs, not its website, docs or art sources (about 6 GB in full).
 - An OpenRouter API key, a supported provider sign-in, or a local Ollama install.
 - **ChromeOS only:** turn on Linux first: Settings → About ChromeOS → Developers →
-  *Linux development environment*. Give it 10 GB or more of disk if you can.
-
+  *Linux development environment*. If the installer says `No space left on device`, make the Linux
+  disk bigger: Settings → About ChromeOS → Developers → Linux development environment →
+  *Disk size* → **Change**.
 ## Install
 
 Paste this into a terminal. On a Chromebook, use the **Terminal** app's Linux ("penguin") window:
@@ -104,6 +106,9 @@ instead.
 - **ChromeOS file access:** agents work inside the Linux container. To give them a folder,
   right-click it in the Files app and choose **Share with Linux**. It appears under
   `/mnt/chromeos/`.
+- **Offline voice (Kokoro) doesn't work on Linux yet.** This is an existing StarNet bug, not caused
+  by this package: StarNet bundles two ONNX Runtime versions, and on Linux they clash in one process
+  (`version VERS_1.21.0 not found`). Cloud providers, chat and agents are unaffected.
 - Upstream says Linux is "not a supported release target," so report problems with this package
   here rather than to StarNet.
 

@@ -197,19 +197,21 @@ EOF
   esac
 }
 
+# Re-runs the installer from the package it was installed from: same slim download, dependency
+# install and cleanup, key and settings kept. With no ref it (re)installs the pinned, tested StarNet
+# commit; `starnet update main` (or any branch/tag/commit) moves to that instead.
 cmd_update() {
-  local src
-  src="$(src_dir)"
-  [ -d "$src/.git" ] || die "$src is not a git checkout"
-  local ref="${1:-HEAD}"
-  local was_running=0
+  local pkg was_running=0
+  pkg="$(cat "$CONF_DIR/pkg-dir" 2>/dev/null || true)"
+  [ -f "$pkg/install.sh" ] || die "can't find the installer this was set up from — re-run get.sh or install.sh"
   responding && was_running=1
   [ "$was_running" = 1 ] && cmd_stop
-  git -C "$src" fetch -q --depth 1 origin "$ref"
-  git -C "$src" checkout -q --force FETCH_HEAD
-  (cd "$src" && npm ci --omit=dev --no-audit --no-fund) \
-    || (cd "$src" && npm ci --omit=dev --no-audit --no-fund --ignore-scripts)
-  echo "Updated to $(git -C "$src" rev-parse --short HEAD) (${ref})."
+  if [ -d "$pkg/../.git" ] && [ -f "$pkg/get.sh" ]; then
+    # refresh the package itself, then run its installer
+    env STARNET_PKG_DIR="$(cd "$pkg/.." && pwd)" ${1:+STARNET_REF="$1"} bash "$pkg/get.sh" --no-system-deps
+  else
+    env ${1:+STARNET_REF="$1"} bash "$pkg/install.sh" --no-system-deps
+  fi
   [ "$was_running" = 1 ] && cmd_start
   return 0
 }
@@ -223,7 +225,7 @@ usage: starnet <command>
   status           show whether the sidecar is running, and how it's set up
   logs             show recent sidecar output
   autostart on|off keep StarNet running in the background (for Night Shift / schedules)
-  update [ref]     pull the latest StarNet (or a given branch/tag/commit) and reinstall deps
+  update [ref]     update this package and reinstall StarNet (pinned commit, or the given ref)
   run              run the sidecar in the foreground
 
   STARNET_PORT=<n>        use another port (default 8787)
