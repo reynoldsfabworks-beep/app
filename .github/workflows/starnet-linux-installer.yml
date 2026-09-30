@@ -1,0 +1,55 @@
+# Runs starnet-linux/test/smoke.sh across the distros install.sh supports: the full installer
+# (package-manager step, Node.js detection or private download, fresh StarNet clone, npm install),
+# then start → serve UI → stop → uninstall in a throwaway $HOME.
+name: starnet-linux-installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/starnet-repo-wb360s]
+    paths:
+      - ".github/workflows/starnet-linux-installer.yml"
+      - "starnet-linux/**"
+      - "!starnet-linux/desktop/**"
+
+jobs:
+  distro:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Debian 12 is also the base of ChromeOS's Linux environment; its Node is 18,
+          # so this leg exercises the private Node.js download.
+          - { name: "debian-12 (apt)",        image: "debian:12",                 prep: "apt-get update && apt-get install -y bash" }
+          - { name: "fedora-41 (dnf)",        image: "fedora:41",                 prep: "true" }
+          - { name: "arch (pacman)",          image: "archlinux:latest",          prep: "true" }
+          - { name: "opensuse-tumbleweed (zypper)", image: "opensuse/tumbleweed", prep: "zypper --non-interactive install bash" }
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Prepare container
+        run: ${{ matrix.prep }}
+        shell: sh
+      - uses: actions/checkout@v4
+      - name: Install + smoke test
+        run: bash starnet-linux/test/smoke.sh
+
+  ubuntu-keyring:
+    name: ubuntu-24.04 (apt, GNOME Keyring)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gnome-keyring libsecret-tools dbus-daemon
+      - name: Install + smoke test with an unlocked keyring
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"; chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            eval "$(printf test | gnome-keyring-daemon --unlock --daemonize --components=secrets)"
+            bash starnet-linux/test/smoke.sh | tee smoke.log
+            grep -q "^keys: *keyring" smoke.log || { echo "expected the key in the keyring"; exit 1; }
+          '
